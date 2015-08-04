@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>World Map</title>
+<script src="//code.jquery.com/jquery-1.11.0.js"></script>
+<style>
+.country:hover{
+  stroke: #fff;
+  stroke-width: 1.5px;
+}
+.text{
+  font-size:15px;
+  text-transform:capitalize;
+}
+#container {
+  margin:10px 10%;
+  border:2px solid #000;
+  border-radius: 5px;
+  height:100%;
+  overflow:hidden;
+  background: #a4bac7;
+}
+.hidden { 
+  display: none; 
+}
+div.tooltip {
+  color: #222; 
+  background: #fff; 
+  padding: .5em; 
+  text-shadow: #f5f5f5 0 1px 0;
+  border-radius: 2px; 
+  box-shadow: 0px 0px 2px 0px #a6a6a6; 
+  opacity: 0.9; 
+  position: absolute;
+}
+.graticule {
+  fill: none;
+  stroke: #fff;
+  stroke-width: .5px;
+  stroke-opacity: .5;
+}
+.graticule :nth-child(2n+16) {
+  stroke-dasharray: 2,2;
+}
+
+.graticule :nth-child(-2n+15) {
+  stroke-dasharray: 2,2;
+}
+.equator {
+  stroke: #ccc;
+  stroke-width: 1px;
+}
+.text1 {
+	font-family: Verdana;
+	font-size  : 14px;
+	fill       : lightgrey;
+	font-weight: bold;
+	text-anchor: middle;
+}
+
+.ring {
+  fill: none;
+  stroke: #FFFFFF;
+}
+</style>
+</head>
+<body>
+  <div id="container"></div>
+
+<script src="js/d3.min.js"></script>
+<script src="js/topojson.v1.min.js"></script>
+<script type="text/javascript" src="http://web9.countingopinions.com/olga/d3.chart.js"></script>
+<script type="text/javascript" src="http://web9.countingopinions.com/olga/pie.js"></script>
+
+<script>
+d3.select(window).on("resize", throttle);
+var zoom = d3.behavior.zoom()
+    .scaleExtent([1, 9])
+    .on("zoom", move);
+
+
+var width = document.getElementById('container').offsetWidth;
+var height = width / 2;
+var center = [width / 2, height / 2];
+var capitals0=[];
+var topo,projection,path,svg,g;
+
+var graticule = d3.geo.graticule();
+
+var tooltip = d3.select("#container").append("div").attr("class", "tooltip hidden");
+
+setup(width,height);
+
+function setup(width,height){
+  projection = d3.geo.mercator()
+    .translate([(width/2), (height/2)])
+    .scale( width / 2 / Math.PI);
+
+  path = d3.geo.path().projection(projection);
+
+  svg = d3.select("#container").append("svg")
+      .attr("width", width)
+      .attr("height", height)
+      .call(zoom)
+      //.call(zoom.event)
+      .on("click", click)
+      .append("g");
+
+  g = svg.append("g");
+
+}
+
+d3.json("data/world-topo-min.json", function(error, world) {
+
+  var countries = topojson.feature(world, world.objects.countries).features;
+
+  topo = countries;
+  draw(topo);
+
+});
+
+function draw(topo) {
+//alert(graticule.outline);
+  svg.append("path")
+     .datum(graticule)
+     .attr("class", "graticule")
+     .attr("d", path);
+
+
+  g.append("path")
+   .datum({type: "LineString", coordinates: [[-180, 0], [-90, 0], [0, 0], [90, 0], [180, 0]]})
+   .attr("class", "equator")
+   .attr("d", path);
+
+
+  var country = g.selectAll(".country").data(topo);
+
+  country.enter().insert("path")
+      .attr("class", "country")
+      .attr("d", path)
+      .attr("id", function(d,i) { return d.id; })
+      .attr("title", function(d,i) { return d.properties.name; })
+      .style("fill", "#d7c7ad")
+      .attr("stroke","#766951"); ///function(d, i) { return d.properties.color; }
+
+  //offsets for tooltips
+  var offsetL = document.getElementById('container').offsetLeft+20;
+  var offsetT = document.getElementById('container').offsetTop+10;
+
+  //tooltips
+  country
+    .on("mousemove", function(d,i) {
+
+      var mouse = d3.mouse(svg.node()).map( function(d) { return parseInt(d); } );
+
+      tooltip.classed("hidden", false)
+             .attr("style", "left:"+(mouse[0]+offsetL)+"px;top:"+(mouse[1]+offsetT)+"px")
+             .html(d.properties.name);
+
+      })
+      .on("mouseout",  function(d,i) {
+        tooltip.classed("hidden", true);
+      }); 
+
+
+  //EXAMPLE: adding some capitals from external CSV file
+  d3.csv("data/countries.csv", function(err, capitals) {
+
+    capitals.forEach(function(i,index){
+      addpoint(i.CapitalLongitude, i.CapitalLatitude, i.CapitalName,i.Frequency,index);
+      capitals0.push(i);
+    });
+
+  });
+
+}
+
+
+function redraw() {
+  width = document.getElementById('container').offsetWidth;
+  height = width / 2;
+  d3.select('svg').remove();
+  setup(width,height);
+  draw(topo);
+}
+
+
+function move() {
+
+  var t = d3.event.translate;
+  var s = d3.event.scale; 
+  zscale = s;
+  var h = height/4;
+
+
+  t[0] = Math.min(
+    (width/height)  * (s - 1), 
+    Math.max( width * (1 - s), t[0] )
+  );
+
+  t[1] = Math.min(
+    h * (s - 1) + h * s, 
+    Math.max(height  * (1 - s) - h * s, t[1])
+  );
+
+  zoom.translate(t);
+  g.attr("transform", "translate(" + t + ")scale(" + s + ")");
+
+  //adjust the country hover stroke width based on zoom level
+  d3.selectAll(".country").style("stroke-width", 1.5 / s);
+
+}
+
+
+
+var throttleTimer;
+function throttle() {
+  window.clearTimeout(throttleTimer);
+    throttleTimer = window.setTimeout(function() {
+      redraw();
+    }, 200);
+}
+
+
+//geo translation on mouse click in map
+function click() {
+  var latlon = projection.invert(d3.mouse(this));
+  console.log(latlon);
+}
+
+
+//function to add points and text to the map (used in plotting capitals)
+function addpoint(lat,lon,text,freq0,i) {
+var frequency;
+if (freq0>10) {
+frequency=freq0;
+} else {
+frequency=6;
+}
+
+var correction;
+if (frequency==6) {
+correction=3;
+} else {
+correction=5;
+}
+
+  var gpoint = g.append("g").attr("class", "gpoint");
+  var x = projection([lat,lon])[0];
+  var y = projection([lat,lon])[1];
+
+  gpoint.append("svg:circle")
+        .attr("cx", x)
+        .attr("cy", y)
+        .attr("class","point")
+        .attr("r", 1.5);
+
+
+  var color = d3.scale.category10();
+ var m = 1,
+    r = 10;
+ //   z = d3.scale.category20c();
+  var arc = d3.svg.arc()
+    .outerRadius(10)
+    .innerRadius(0);  
+    
+   /* 
+gpoint.append("svg:svg")
+    .attr('class','bar')
+    .attr("width", freq)
+    .attr("height", freq)
+    .attr('x', x-5) 
+    .attr('y', y-5)
+    .style('z-index','5000');
+*/
+var pie = d3.layout.pie();
+//alert(d3.selectAll(".bar"));
+//for (var b=0; b<capitals0;b++) {
+var data2 = [
+      { label: 'Developer', value: 3 },
+      { label: 'Designer', value: 2 },
+      { label: 'Executive', value: 4 },
+      { label: 'Health Informaticist', value: 5},
+      { label: 'Other', value: 3 },
+      { label: 'Researcher', value: 2 },
+      { label: 'Student', value: 4 }
+    ];
+   pie = gpoint.append("svg:svg")
+    .attr('class','bar')
+    //.attr("width", freq)
+    //.attr("height", freq)
+    .attr('x', x-frequency/2) 
+    .attr('y', y-frequency/2)
+    .style('z-index','5000')
+//d3.selectAll(".bar")  
+    //.filter(function(d) { alert(this.data()); return d.stamp==d3.selectAll('.bar').data()[y].stamp })
+        // .attr('width', 450)
+        //.attr('height', 300)
+        .chart('Pie', {
+          width: frequency,
+          height: frequency,
+          radius: frequency/2.1
+         // labelTemplate: '{label}: {value}'
+        })
+        .colors(function(d, i){
+        var col = d3.scale.ordinal()
+          .domain(["Developer", "Designer", "Executive", "Health Informaticist","Other","Researcher","Student"])
+          .range(color.range());
+        return col(d.label);
+      });
+
+pie.draw(data2);
+d3.selectAll(".label-group").remove();
+
+
+
+  
+var rotate=0;
+var rotate_function=setInterval(function() {
+//alert("gg");
+ gpoint.append("circle")
+      .attr("class", "ring")
+      .attr("transform", "translate(" +x+","+y + ")")
+      .attr("r", 5)
+      .style("stroke-width", 2)
+      .style("stroke", "white")
+    .transition()
+      .ease("linear")
+      .duration(6000)
+      .style("stroke-opacity", 1e-6)
+      .style("stroke-width", 1)
+      .style("stroke", "white")
+      .attr("r", 20)
+      .remove();
+
+rotate +=30;
+stop_rotate(rotate);
+},750);
+      
+ function stop_rotate(rotate) {
+
+if (rotate>29) {
+
+clearInterval(rotate_function);
+}
+}
+
+      
+
+  //conditional in case a point has no associated text
+  if(text.length>0){
+
+    gpoint.append("text")
+          .attr("x", x+2)
+          .attr("y", y+2)
+          .attr("class","text")
+          .text(text);
+  }
+
+}
+
+
+function zoomed() {
+  g.attr("transform", "translate(" + zoom.translate() + ")scale(" + zoom.scale() + ")");
+}
+
+d3.select(self.frameElement).style("height", height + "px");
+
+
+var bar = d3.select("svg").append("g")
+    .attr("x",10)
+    .attr("y",10);
+bar.append("rect")
+    .style("class","button")
+    .attr("width", 40)
+    .attr("height", 20);
+
+bar.append("text")
+    .attr("x", 3; })
+    .attr("y", 20 / 2)
+    .attr("dy", ".35em")
+    .text("+");
+
+
+/*
+// Simplest possible buttons
+svg.selectAll(".button")
+    .data(['zoom_in', 'zoom_out'])
+    .enter()
+    .append("rect")
+    .attr("x", function(d,i){return 10 + 50*i})
+    .attr({y: 10, width: 40, height: 20, class: "button"})
+    .attr("id", function(d){return d})
+    .style("fill", function(d,i){ return i ? "navy" : "blue"});
+    
+d3.select("#zoom_in").append("text").attr("class","text1").text(" + ");
+d3.select("#zoom_out").append("text").attr("class","text1").text(" - ");
+*/
+// Control logic to zoom when buttons are pressed, keep zooming while they are
+// pressed, stop zooming when released or moved off of, not snap-pan when
+// moving off buttons, and restore pan on mouseup.
+
+var pressed = false;
+d3.selectAll('.button').on('mousedown', function(){
+    pressed = true;
+    disableZoom();
+    zoomButton(this.id === 'zoom_in')
+}).on('mouseup', function(){
+    pressed = false;
+}).on('mouseout', function(){
+    pressed = false;
+})
+svg.on("mouseup", function(){svg.call(zoom)});
+
+function disableZoom(){
+    svg.on("mousedown.zoom", null)
+       .on("touchstart.zoom", null)
+       .on("touchmove.zoom", null)
+       .on("touchend.zoom", null);
+}
+
+function zoomButton(zoom_in){
+    var scale = zoom.scale(),
+        extent = zoom.scaleExtent(),
+        translate = zoom.translate(),
+        x = translate[0], y = translate[1],
+        factor = zoom_in ? 1.3 : 1/1.3,
+        target_scale = scale * factor;
+
+    // If we're already at an extent, done
+    if (target_scale === extent[0] || target_scale === extent[1]) { return false; }
+    // If the factor is too much, scale it down to reach the extent exactly
+    var clamped_target_scale = Math.max(extent[0], Math.min(extent[1], target_scale));
+    if (clamped_target_scale != target_scale){
+        target_scale = clamped_target_scale;
+        factor = target_scale / scale;
+    }
+
+    // Center each vector, stretch, then put back
+    x = (x - center[0]) * factor + center[0];
+    y = (y - center[1]) * factor + center[1];
+
+    // Transition to the new view over 100ms
+    d3.transition().duration(100).tween("zoom", function () {
+        var interpolate_scale = d3.interpolate(scale, target_scale),
+            interpolate_trans = d3.interpolate(translate, [x,y]);
+        return function (t) {
+            zoom.scale(interpolate_scale(t))
+                .translate(interpolate_trans(t));
+            zoomed();
+        };
+    }).each("end", function(){
+        if (pressed) zoomButton(zoom_in);
+    });
+}
+</script>
+</body>
+</html>

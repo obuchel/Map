@@ -1,0 +1,7 @@
+CountryName,CapitalName,CapitalLatitude,CapitalLongitude,CountryCode,ContinentName,Frequency
+Brazil,Brasilia,-15.783333333333333,-47.916667,BR,South America,1
+United States,Washington DC,38.883333,-77.000000,US,Central America,2
+Canada,Ottawa,-15.783333333333333,-47.916667,CA,Central America,15
+Phillipines,Manila,14.58,121,PH,Southeast Asia,1
+Australia,Sydney,33.8650,151.2094,AU,Australia,1
+India,Delhi,28.61,77.23,IN,Asia,1
